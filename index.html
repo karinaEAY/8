@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phone Order App | Glassmorphic</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        'primary-blue': '#007AFF', // Apple-like blue
+                        'secondary-gray': '#E5E5EA',
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Load Leaflet CSS for the map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        /* Base styles and lively background (Liquid Gradient) */
+        body {
+            font-family: 'Inter', sans-serif;
+            /* Vibrant, non-green palette: Blue Violet, Deep Pink, Deep Sky Blue, Gold */
+            background: linear-gradient(-45deg, #8A2BE2, #FF1493, #00BFFF, #FFD700);
+            background-size: 400% 400%;
+            animation: gradientBG 20s ease infinite; /* Slower, smoother movement */
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; 
+            padding-top: 2rem;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .container {
+            max-width: 480px; 
+            width: 95%;
+            margin: 0 auto;
+        }
+
+        /* Liquid Glass (Glassmorphism) Styles */
+        .glass-container {
+            background: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-radius: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        }
+
+        .step-content {
+            min-height: 70vh; 
+        }
+
+        .map-container {
+            height: 250px; 
+            width: 100%;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Custom Button Styling */
+        .btn-primary {
+            @apply bg-primary-blue text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:bg-blue-600 transition duration-300 transform hover:scale-105;
+        }
+        .btn-secondary {
+            @apply bg-gray-50/70 text-gray-700 font-semibold py-3 px-6 rounded-xl border border-gray-300 hover:bg-gray-200 transition duration-300;
+        }
+        .selection-card {
+            @apply bg-white/70 p-4 rounded-xl shadow-md border-2 border-transparent transition-all duration-300 cursor-pointer;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Springy animation */
+        }
+        .selection-card.selected {
+            @apply border-primary-blue shadow-xl scale-[1.03] bg-white;
+        }
+
+        /* Modal specific styles */
+        #order-modal {
+            transition: opacity 0.3s, visibility 0.3s;
+        }
+        .modal-card {
+             /* Use glass effect for the modal content too */
+            background: rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+        }
+        
+        /* Fireworks Celebration Screen Styles */
+        #celebration-screen {
+            background-color: transparent; /* Let the canvas handle the black fade */
+        }
+        @keyframes bounce-in {
+            0% { transform: scale(0.5); opacity: 0; }
+            80% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); }
+        }
+        .animate-bounce-in {
+            animation: bounce-in 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+        #fireworks-canvas {
+            z-index: 0;
+            background: rgba(0, 0, 0, 0.8);
+        }
+    </style>
+</head>
+<body class="font-sans">
+
+    <!-- Main Application Container (Product Selection) -->
+    <div id="app" class="container mx-auto pb-8">
+        <header class="mb-6 text-center text-white">
+            <h1 class="text-3xl font-extrabold flex items-center justify-center drop-shadow-md">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-primary-blue mr-2 bg-white rounded-full p-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12" y2="18"></line></svg>
+                New Phone Order
+            </h1>
+            <p class="text-sm text-white/80 font-medium drop-shadow-sm">Select your product configuration to begin.</p>
+        </header>
+
+        <!-- Dynamic Content Area -->
+        <div id="step-content" class="glass-container p-4">
+            <!-- Content for Product Selection -->
+        </div>
+
+    </div>
+
+    <!-- Liquid Glass Modal for Memory, Address, and Name Entry -->
+    <div id="order-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-opacity duration-300 invisible opacity-0">
+        <div class="modal-card w-full max-w-sm rounded-3xl p-6 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center mb-4">
+                <h2 id="modal-title" class="text-xl font-bold text-gray-800">Order Details</h2>
+                <button onclick="closeModal()" class="text-gray-500 hover:text-gray-900 transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            
+            <div id="modal-content" class="min-h-[300px]">
+                <!-- Modal steps content: Memory, Map, Name/Review -->
+            </div>
+
+            <div class="flex justify-between pt-4 border-t border-gray-300/50">
+                <button id="modal-prev-btn" class="btn-secondary py-2 px-4 text-sm" onclick="modalPrevStep()" disabled>Previous</button>
+                <button id="modal-next-btn" class="btn-primary py-2 px-4 text-sm" onclick="modalNextStep()" disabled>Next</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Celebration Screen (Full Screen Fireworks) -->
+    <div id="celebration-screen" class="fixed inset-0 z-50 bg-black/80 flex flex-col items-center justify-center text-white p-8 opacity-0 invisible transition-opacity duration-1000">
+        <canvas id="fireworks-canvas" class="absolute inset-0 w-full h-full"></canvas>
+        <div class="relative z-10 text-center glass-container p-6 rounded-3xl animate-bounce-in">
+            <h2 class="text-4xl font-extrabold text-yellow-300 drop-shadow-lg mb-4">🎉 Order Successfully Submitted! 🚀</h2>
+            <p class="text-xl font-medium mb-8">Your new phone is on its way!</p>
+            <div id="final-summary" class="text-left text-sm space-y-2">
+                <!-- Summary will be injected here -->
+            </div>
+            <p class="mt-8 text-sm text-white/70">Thank you for your order!</p>
+        </div>
+    </div>
+
+    <!-- Load Leaflet JS -->
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+    <script>
+        // --- DATA SETUP ---
+        const PRODUCTS = [
+            { model: "iPhone 17 Pro Max", baseImage: "https://my-apple.com.ua/image/catalog/products/iphone/iphone-17-pro-max/iphone-17-pro-max-silver-1.png", colors: [
+                { name: "Cosmic Orange", url: "https://my-apple.com.ua/image/catalog/products/iphone/iphone-17-pro-max/iphone-17-pro-max-cosmic-orange-1.png" },
+                { name: "Silver", url: "https://my-apple.com.ua/image/catalog/products/iphone/iphone-17-pro-max/iphone-17-pro-max-silver-1.png" },
+                { name: "Deep Blue", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-17-pro-max/iphone-17-pro-max-deep-blue-1-700x700.webp" },
+            ]},
+            { model: "iPhone 16 Pro Max", baseImage: "https://my-apple.com.ua/image/catalog/products/iphone/iphone-16-pro-16-pro-max/black-titanium-1.png", colors: [
+                { name: "Desert Titanium", url: "https://my-apple.com.ua/image/catalog/products/iphone/iphone-16-pro-16-pro-max/desert-titanium-1.png" },
+                { name: "Black Titanium", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-16-pro-16-pro-max/black-titanium-1-700x700.webp" },
+                { name: "Natural Titanium", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-16-pro-16-pro-max/natural-titanium-1-700x700.webp" },
+            ]},
+            { model: "iPhone 17 Air", baseImage: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-17-air/iphone-17-space-black-1-700x700.webp", colors: [
+                { name: "Space Black", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-17-air/iphone-17-space-black-1-700x700.webp" },
+                { name: "Cloud White", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-17-air/iphone-17-cloud-white-1-700x700.webp" },
+                { name: "Sky Blue", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-17-air/iphone-17-sky-blue-1-700x700.webp" },
+            ]},
+            { model: "iPhone 17", baseImage: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-17/iphone-17-black-1-700x700.webp", colors: [
+                { name: "Black", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-17/iphone-17-black-1-700x700.webp" },
+                { name: "Lavender", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-17/iphone-17-Lavender-1-700x700.webp" },
+                { name: "White", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-17/iphone-17-white-1-700x700.webp" },
+            ]},
+            { model: "iPhone 16 Plus", baseImage: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-16-16-plus/ultramarine-1-700x700.webp", colors: [
+                { name: "Ultramarine", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-16-16-plus/ultramarine-1-700x700.webp" },
+                { name: "Pink", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-16-16-plus/pink-1-700x700.webp" },
+                { name: "Teal", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-16-16-plus/teal-1-700x700.webp" },
+            ]},
+            { model: "iPhone 15 Pro Max", baseImage: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-15-pro-15-pro-max/blue-titanium-1-700x700.webp", colors: [
+                { name: "Blue Titanium", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-15-pro-15-pro-max/blue-titanium-1-700x700.webp" },
+                { name: "Natural Titanium", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-15-pro-15-pro-max/natural-titanium-1-700x700.webp" },
+                { name: "Black Titanium", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-15-pro-15-pro-max/black-titanium-1-700x700.webp" },
+            ]},
+            { model: "iPhone 15 Plus", baseImage: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-15-15-plus/green-1-700x700.webp", colors: [
+                { name: "Blue", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-15-15-plus/blue-1-700x700.webp" },
+                { name: "Green", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-15-15-plus/green-1-700x700.webp" },
+                { name: "Black", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-15-15-plus/black-1-700x700.webp" },
+            ]},
+            { model: "iPhone 14 Plus", baseImage: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-14-14%20Plus/product-red-1-700x700.webp", colors: [
+                { name: "Blue", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-14-14%20Plus/blue-1-700x700.webp" },
+                { name: "Product Red", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-14-14%20Plus/product-red-1-700x700.webp" },
+                { name: "Starlight", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-14-14%20Plus/starlight-1-700x700.webp" },
+            ]},
+            { model: "iPhone 13 Pro Max", baseImage: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-13-pro-13-pro-max/sierra-blue-1-700x700.webp", colors: [
+                { name: "Graphite", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-13-pro-13-pro-max/graphite-1-700x700.webp" },
+                { name: "Alpine Green", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-13-pro-13-pro-max/alpine-green-1-700x700.webp" },
+                { name: "Sierra Blue", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-13-pro-13-pro-max/sierra-blue-1-700x700.webp" },
+            ]},
+            { model: "iPhone 12 Pro Max", baseImage: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-12-pro-12-pro-max/pacific-blue-1-700x700.webp", colors: [
+                { name: "Graphite", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-12-pro-12-pro-max/graphite-1-700x700.webp" },
+                { name: "Gold", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-12-pro-12-pro-max/gold-1-700x700.webp" },
+                { name: "Pacific Blue", url: "https://my-apple.com.ua/image/cache/webp/catalog/products/iphone/iphone-12-pro-12-pro-max/pacific-blue-1-700x700.webp" },
+            ]},
+        ];
+
+        const MEMORY_OPTIONS = ["128GB", "256GB", "512GB", "1TB"];
+        
+        // --- APP STATE ---
+        let modalStep = 1; // 1: Memory, 2: Map, 3: Name & Review
+        const totalModalSteps = 3; 
+        
+        let order = {
+            model: null,
+            color: null,
+            memory: null,
+            imageUrl: null,
+            latitude: null,
+            longitude: null,
+            customerName: null,
+        };
+        let mapInstance = null;
+        let markerInstance = null;
+
+        const MODAL_STEP_TITLES = {
+            1: "1. Select Memory",
+            2: "2. Choose Delivery Address",
+            3: "3. Enter Name & Review"
+        }
+
+        // --- UTILITY FUNCTIONS ---
+
+        /**
+         * Safely renders an image with a fallback placeholder.
+         */
+        function renderImage(url, alt) {
+            const fallbackUrl = 'https://placehold.co/200x200/cccccc/333333?text=Image';
+            return `<img 
+                        src="${url}" 
+                        alt="${alt}" 
+                        class="w-full h-auto rounded-lg object-contain mb-2 transition-transform duration-500 hover:scale-105"
+                        onerror="this.onerror=null; this.src='${fallbackUrl}'; this.alt='Image not found';"
+                    >`;
+        }
+        
+        /**
+         * Updates the main app content (Product Selection view).
+         */
+        function renderApp() {
+            const contentDiv = document.getElementById('step-content');
+            contentDiv.innerHTML = '';
+            
+            let title = `<h2 class="text-2xl font-bold mb-6 text-gray-800">1. Select Product</h2>`;
+            contentDiv.innerHTML += title;
+
+            renderProductSelection(contentDiv);
+            
+            // Re-check validation on load/re-render to ensure modal opens if ready
+            checkMainViewValidation();
+        }
+
+        /**
+         * Renders the UI for selecting Model, Color, and Memory inline.
+         */
+        function renderProductSelection(contentDiv) {
+            
+            contentDiv.innerHTML += `
+                <p class="text-gray-600 mb-4 font-medium">Select Model and Color to continue in the pop-up window.</p>
+                <div id="model-list" class="space-y-4">
+                    ${PRODUCTS.map(p => {
+                        const isSelected = order.model === p.model;
+                        let inlineSelectionHTML = '';
+
+                        if (isSelected) {
+                            // 2. Color Selection (Inline)
+                            inlineSelectionHTML += `
+                                <div class="p-4 mt-4 bg-white/70 rounded-xl border border-secondary-gray/50 animate-fadeIn transition-all duration-500">
+                                    <h4 class="font-bold mb-3 text-gray-800">Choose Color:</h4>
+                                    <div id="color-list" class="grid grid-cols-3 gap-3">
+                                        ${p.colors.map(c => `
+                                            <div 
+                                                class="selection-card p-2 shadow-inner ${order.color === c.name ? 'selected' : ''}" 
+                                                onclick="event.stopPropagation(); selectProductPart('color', '${c.name}', '${c.url}')"
+                                            >
+                                                ${renderImage(c.url, c.name)}
+                                                <p class="text-center text-xs font-medium">${c.name}</p>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                    <p class="text-xs text-gray-500 mt-4">Selecting a color will open the next step.</p>
+                                </div>
+                            `;
+                        }
+                        
+                        // Main Model Card structure
+                        return `
+                            <div 
+                                class="w-full selection-card p-4 flex flex-col ${isSelected ? 'selected' : ''} transition-all duration-300" 
+                                onclick="selectProductPart('model', '${p.model}')"
+                            >
+                                <div class="flex items-center space-x-4">
+                                    <div class="w-1/3 flex-shrink-0">
+                                        ${renderImage(p.baseImage, p.model)}
+                                    </div>
+                                    <div class="w-2/3">
+                                        <p class="text-lg font-bold text-gray-900">${p.model}</p>
+                                        ${isSelected && order.color ? 
+                                            `<p class="text-sm text-primary-blue font-semibold mt-1">Color: ${order.color}</p>` :
+                                            `<p class="text-sm text-gray-500 mt-1">Tap to configure.</p>`
+                                        }
+                                    </div>
+                                </div>
+                                ${isSelected ? inlineSelectionHTML : ''}
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        }
+
+        /**
+         * Handles selection of model, color, or memory.
+         */
+        function selectProductPart(part, value, imageUrl = null) {
+            let shouldRerender = false;
+
+            if (part === 'model' && order.model !== value) {
+                order.model = value;
+                order.color = null;
+                order.memory = null;
+                shouldRerender = true;
+            } else if (part === 'color' && order.color !== value) {
+                order.color = value;
+                order.imageUrl = imageUrl;
+                shouldRerender = true;
+            } else if (part === 'memory' && order.memory !== value) {
+                order.memory = value;
+                shouldRerender = false; // Only re-render the modal, not the main app
+            } else if (part === 'model' && order.model === value) {
+                // Re-clicking selected model collapses/resets the selection
+                order.model = null;
+                order.color = null;
+                order.memory = null;
+                shouldRerender = true;
+            } else {
+                return;
+            }
+            
+            if (shouldRerender) {
+                renderApp();
+            }
+            
+            // Trigger modal logic after product part updates
+            checkMainViewValidation();
+            
+            // If in modal (memory selection) only update modal
+            if (part === 'memory' && order.memory) {
+                renderModalContent();
+                validateModalStep();
+            }
+        }
+        
+        /**
+         * Checks if the model and color are selected and opens the modal if so.
+         */
+        function checkMainViewValidation() {
+            if (order.model && order.color && !isModalOpen()) {
+                // Product is minimally configured (Model and Color). Open the modal!
+                openModal();
+            }
+        }
+        
+        function isModalOpen() {
+            return document.getElementById('order-modal').classList.contains('visible');
+        }
+
+        // --- MODAL LOGIC ---
+
+        function openModal() {
+            const modal = document.getElementById('order-modal');
+            modal.classList.remove('invisible', 'opacity-0');
+            modal.classList.add('visible', 'opacity-100');
+            modalStep = 1; // Always start at the memory step
+            renderModalContent();
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('order-modal');
+            modal.classList.add('invisible', 'opacity-0');
+            modal.classList.remove('visible', 'opacity-100');
+            
+            // Cleanup map when closing
+            cleanupMap();
+        }
+
+        function renderModalContent() {
+            const contentDiv = document.getElementById('modal-content');
+            const titleElement = document.getElementById('modal-title');
+            titleElement.textContent = MODAL_STEP_TITLES[modalStep];
+            contentDiv.innerHTML = '';
+            
+            // Set button state
+            const prevBtn = document.getElementById('modal-prev-btn');
+            const nextBtn = document.getElementById('modal-next-btn');
+            
+            prevBtn.disabled = modalStep === 1;
+            nextBtn.innerHTML = modalStep === totalModalSteps ? 'Submit Order' : 'Next';
+            nextBtn.disabled = true; // Disabled by default until validation passes
+
+            switch (modalStep) {
+                case 1:
+                    renderModalStep1(contentDiv); // Memory
+                    break;
+                case 2:
+                    renderModalStep2(contentDiv); // Map
+                    break;
+                case 3:
+                    renderModalStep3(contentDiv); // Name & Review
+                    break;
+            }
+
+            validateModalStep();
+        }
+
+        function validateModalStep() {
+            const nextBtn = document.getElementById('modal-next-btn');
+            let isValid = false;
+
+            switch (modalStep) {
+                case 1: // Memory Selection
+                    isValid = order.memory !== null;
+                    break;
+                case 2: // Map Selection
+                    isValid = order.latitude !== null && order.longitude !== null;
+                    break;
+                case 3: // Name Entry & Review
+                    isValid = order.customerName && order.customerName.length > 0;
+                    break;
+            }
+            nextBtn.disabled = !isValid;
+        }
+        
+        function modalNextStep() {
+            if (modalStep < totalModalSteps) {
+                // Cleanup map if moving away from map step
+                if (modalStep === 2) {
+                    cleanupMap();
+                }
+                modalStep++;
+                renderModalContent();
+            } else if (modalStep === totalModalSteps) {
+                submitOrder();
+            }
+        }
+
+        function modalPrevStep() {
+            if (modalStep > 1) {
+                // Ensure map initializes correctly if navigating back to it
+                if (modalStep === 3) {
+                     cleanupMap();
+                }
+                modalStep--;
+                renderModalContent();
+            }
+        }
+
+        /**
+         * Renders Memory Selection (Modal Step 1).
+         */
+        function renderModalStep1(contentDiv) {
+            contentDiv.innerHTML += `
+                <div class="p-2 bg-white/70 rounded-xl mb-4 shadow-inner">
+                    <p class="text-sm font-semibold text-gray-800">Selected Product:</p>
+                    <p class="text-xs text-gray-600">${order.model} in ${order.color}</p>
+                </div>
+                <h4 class="font-bold mb-3 text-gray-800">Choose Memory:</h4>
+                <div id="memory-list" class="grid grid-cols-2 gap-3">
+                    ${MEMORY_OPTIONS.map(m => `
+                        <button 
+                            class="py-3 px-4 rounded-lg font-medium border-2 transition duration-200 text-sm 
+                                ${order.memory === m ? 'bg-primary-blue text-white border-primary-blue shadow-lg' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-200'}"
+                            onclick="selectProductPart('memory', '${m}')"
+                        >
+                            ${m}
+                        </button>
+                    `).join('')}
+                </div>
+                
+                <div class="flex flex-col items-center mt-6 p-3 bg-white/70 rounded-xl shadow-inner">
+                    ${order.imageUrl ? renderImage(order.imageUrl, order.model + ' ' + order.color) : ''}
+                </div>
+            `;
+        }
+
+        /**
+         * Renders the interactive map selection UI (Modal Step 2).
+         */
+        function renderModalStep2(contentDiv) {
+            contentDiv.innerHTML += `
+                <p class="text-gray-600 mb-4 text-sm">Tap on the map to set your delivery location.</p>
+                <div id="map" class="map-container"></div>
+                <div id="address-info" class="mt-4 p-3 bg-white/50 rounded-xl text-xs font-medium text-gray-700 transition duration-300 shadow-inner">
+                    ${order.latitude ? `Selected Address: Lat: ${order.latitude.toFixed(4)}, Lon: ${order.longitude.toFixed(4)}` : 'No location selected yet.'}
+                </div>
+            `;
+            
+            // Initialize the map after the element is in the DOM
+            setTimeout(initMap, 100); 
+        }
+
+        /**
+         * Initializes the Leaflet map instance.
+         */
+        function initMap() {
+            if (mapInstance) {
+                mapInstance.remove();
+                mapInstance = null;
+                markerInstance = null;
+            }
+
+            const mapElement = document.getElementById('map');
+            if (!mapElement) return;
+
+            const initialLat = order.latitude || 30.0;
+            const initialLon = order.longitude || 0.0;
+            const initialZoom = order.latitude ? 10 : 2;
+
+            mapInstance = L.map('map', {
+                attributionControl: false,
+                minZoom: 2
+            }).setView([initialLat, initialLon], initialZoom);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(mapInstance);
+
+            if (order.latitude) {
+                markerInstance = L.marker([order.latitude, order.longitude]).addTo(mapInstance);
+            }
+
+            mapInstance.on('click', function(e) {
+                setMarker(e.latlng.lat, e.latlng.lng);
+                validateModalStep();
+            });
+            
+            // Invalidate size to ensure map tiles render correctly inside the modal
+            mapInstance.invalidateSize();
+        }
+
+        /**
+         * Sets the map marker and updates the order state.
+         */
+        function setMarker(lat, lng) {
+            order.latitude = lat;
+            order.longitude = lng;
+            
+            if (markerInstance) {
+                mapInstance.removeLayer(markerInstance);
+            }
+
+            markerInstance = L.marker([lat, lng]).addTo(mapInstance)
+                .bindPopup("Delivery Location").openPopup();
+            
+            document.getElementById('address-info').innerHTML = `Selected Address: Lat: ${lat.toFixed(4)}, Lon: ${lng.toFixed(4)}`;
+        }
+
+        /**
+         * Cleans up the map instance.
+         */
+        function cleanupMap() {
+            if (mapInstance) {
+                mapInstance.off('click');
+                mapInstance.remove();
+                mapInstance = null;
+                markerInstance = null;
+            }
+        }
+
+        /**
+         * Renders the name entry and final review UI (Modal Step 3).
+         */
+        function renderModalStep3(contentDiv) {
+            // 1. Name Entry
+            contentDiv.innerHTML += `
+                <h3 class="font-bold mb-3 text-gray-800">Your Contact Information</h3>
+                <input 
+                    type="text" 
+                    id="customer-name-input" 
+                    placeholder="e.g., Jane Doe" 
+                    value="${order.customerName || ''}"
+                    class="w-full p-3 border-2 border-secondary-gray/50 rounded-xl focus:ring-primary-blue focus:border-primary-blue transition mb-6 bg-white/70 shadow-inner"
+                    oninput="updateName(this.value)"
+                />
+                
+                <h3 class="font-bold mb-3 text-gray-800 border-t border-gray-300/50 pt-4">Order Summary</h3>
+            `;
+
+            // 2. Review Section
+            contentDiv.innerHTML += `
+                <div class="space-y-3">
+                    ${renderReviewItem('Product', `${order.memory} ${order.model} (${order.color})`)}
+                    ${renderReviewItem('Name', order.customerName || 'Pending...')}
+                    ${renderReviewItem('Coordinates', order.latitude ? `Lat: ${order.latitude.toFixed(4)}, Lon: ${order.longitude.toFixed(4)}` : 'Not set.')}
+                    <div class="flex flex-col items-center mt-4 p-3 bg-white/70 rounded-xl shadow-inner">
+                        ${order.imageUrl ? renderImage(order.imageUrl, order.model + ' ' + order.color) : ''}
+                    </div>
+                </div>
+            `;
+            // Ensure the input value is re-checked after render if it was already set
+            validateModalStep();
+        }
+
+        /**
+         * Updates the customer name in the order state.
+         */
+        function updateName(name) {
+            order.customerName = name.trim();
+            // Simple way to update the review section instantly without full re-render:
+            const nameElement = document.getElementById('modal-content').querySelector('span.font-semibold.text-gray-800:nth-child(2)');
+            if (nameElement) {
+                nameElement.textContent = order.customerName || 'Pending...';
+            }
+            validateModalStep();
+        }
+
+        /**
+         * Helper function to render a review item.
+         * @param {boolean} isFinalScreen - If true, uses inverted/celebration colors.
+         */
+        function renderReviewItem(label, value, isFinalScreen = false) {
+             if (isFinalScreen) {
+                return `
+                    <div class="flex justify-between items-center p-2 bg-white/10 rounded-lg shadow-sm">
+                        <span class="font-medium text-white/70 text-sm">${label}:</span>
+                        <span class="font-semibold text-white text-sm">${value}</span>
+                    </div>
+                `;
+            } else {
+                // Modal review item style
+                return `
+                    <div class="flex justify-between items-center p-2 bg-white/70 rounded-lg shadow-sm">
+                        <span class="font-medium text-gray-500 text-sm">${label}:</span>
+                        <span class="font-semibold text-gray-800 text-sm">${value}</span>
+                    </div>
+                `;
+            }
+        }
+
+        /**
+         * Final submission logic.
+         */
+        function submitOrder() {
+            // 1. Close the modal
+            closeModal(); 
+            
+            // 2. Show the celebration screen
+            showCelebrationScreen();
+
+            // 3. Log order (real submission happens here)
+            console.log("Order Submitted:", order);
+        }
+
+        function showCelebrationScreen() {
+            const screen = document.getElementById('celebration-screen');
+            const summaryDiv = document.getElementById('final-summary');
+            
+            // Inject final summary details
+            summaryDiv.innerHTML = `
+                <p class="font-semibold text-lg text-white mb-3">Order Details:</p>
+                ${renderReviewItem('Product', `${order.memory} ${order.model} (${order.color})`, true)}
+                ${renderReviewItem('Name', order.customerName, true)}
+                ${renderReviewItem('Delivery', order.latitude ? `Lat: ${order.latitude.toFixed(4)}, Lon: ${order.longitude.toFixed(4)}` : 'N/A', true)}
+            `;
+            
+            // Make visible
+            screen.classList.remove('invisible', 'opacity-0');
+            screen.classList.add('visible', 'opacity-100');
+            
+            // Start the fireworks animation
+            setupFireworksCanvas();
+        }
+        
+        // --- FIREWORKS CANVAS LOGIC ---
+        
+        let canvas, ctx, particles = [];
+        const particleCount = 100;
+        const gravity = 0.98;
+
+        function Particle(x, y, color) {
+            this.x = x;
+            this.y = y;
+            this.vx = Math.random() * 4 - 2; // velocity x
+            this.vy = Math.random() * -6 - 3; // velocity y (upwards)
+            this.color = color;
+            this.radius = Math.random() * 2 + 1;
+            this.life = 100;
+            this.fade = 0.98;
+        }
+
+        Particle.prototype.update = function() {
+            this.vy += gravity * 0.05;
+            this.vx *= 0.99;
+            this.x += this.vx;
+            this.y += this.vy;
+            this.life *= this.fade;
+        };
+
+        Particle.prototype.draw = function() {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2, false);
+            ctx.fillStyle = this.color;
+            ctx.globalAlpha = this.life / 100;
+            ctx.fill();
+        };
+        
+        function explode(x, y) {
+            const colors = ['#FFD700', '#FF1493', '#00BFFF', '#FFFFFF', '#8A2BE2'];
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            
+            for (let i = 0; i < particleCount; i++) {
+                let p = new Particle(x, y, color);
+                // Introduce random upward thrust
+                p.vy = Math.random() * -15; 
+                p.vx = (Math.random() - 0.5) * 10;
+                particles.push(p);
+            }
+        }
+
+        function loop() {
+            if (!ctx) return;
+            
+            // Draw background (semi-transparent for trail effect)
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                particles[i].draw();
+
+                if (particles[i].life < 0.1) {
+                    particles.splice(i, 1);
+                }
+            }
+            
+            // Randomly launch a "firework" from the bottom
+            if (Math.random() < 0.03) {
+                 // Launch point at the bottom 
+                let launchX = Math.random() * (canvas.width * 0.8) + (canvas.width * 0.1);
+                let launchY = canvas.height;
+                // Simple launcher: particle that flies up and explodes
+                let launcher = new Particle(launchX, launchY, '#FFFFFF');
+                launcher.vy = Math.random() * -15 - 10; // High velocity up
+                launcher.vx = (Math.random() - 0.5) * 2;
+                launcher.isLauncher = true;
+                launcher.life = 100; 
+                launcher.fade = 1.0; 
+                launcher.update = function() {
+                    this.vy += gravity * 0.05;
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    // Check if it reached peak or height limit
+                    if (this.vy > 0 || this.y < canvas.height / 3) { 
+                        explode(this.x, this.y);
+                        this.life = 0; // Destroy launcher
+                    }
+                };
+                particles.push(launcher);
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        function setupFireworksCanvas() {
+            canvas = document.getElementById('fireworks-canvas');
+            ctx = canvas.getContext('2d');
+            
+            // Handle resizing
+            function resizeCanvas() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas(); // Initial size setup
+
+            // Clear old particles if necessary
+            particles = []; 
+            
+            // Start the loop only once
+            if (!window.fireworksLoopStarted) {
+                loop();
+                window.fireworksLoopStarted = true;
+            }
+        }
+
+        // --- INITIALIZATION ---
+        window.onload = function() {
+            if (typeof window.mapInstance !== 'undefined') {
+                cleanupMap();
+            }
+            renderApp();
+        };
+
+    </script>
+
+</body>
+</html>
